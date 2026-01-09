@@ -31,4 +31,6 @@
 ######################################################################################
 ######################################################################################
 
-git clone 
+mkdir fw_unpackers && cd fw_unpackers
+git clone https://github.com/reperam/Firmware-Unpackers.git
+fw_unpacker -h

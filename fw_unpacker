@@ -1,0 +1,106 @@
+#!/usr/bin/env python3
+
+import os
+import sys
+
+# DEFAULT TABLE, to get a different table supply in form of mtdparts format
+# e.g 256K(boot),640K(tag),2048K(kernel),4608K(rootfs),384K(system),256K(param)
+# Partition table from bootlog
+
+PARTITIONS = [
+    (0x000000000000, 0x000000040000, "boot"),
+    (0x000000040000, 0x0000000e0000, "tag"),
+    (0x0000000e0000, 0x0000002e0000, "kernel"),
+    (0x0000002e0000, 0x000000760000, "rootfs"),
+    (0x000000760000, 0x0000007c0000, "system"),
+    (0x0000007c0000, 0x000000800000, "param"),
+    (0x000000000000, 0x000000800000, "all")
+]
+
+def printusage(programname="unpacker"):
+
+    print(f"Usage: python3 {programname} <clean_dump.bin> <output_dir> [optional : parts in mtdpart format]")
+    print(f"    examples:\n")
+    print(f"        {programname} camera ./unpacked \"56K(boot),640K(tag),2048K(kernel),4608K(rootfs),384K(system),256K(param)\"")
+    print(f"        {programname} router.bin ./unpacked")
+    sys.exit(1)
+
+
+
+def getpartitiontable(mtdparts):
+    
+    size=0
+    PARTS=[]
+    
+    partitions = mtdparts.split(",")
+
+    for partition in partitions:
+        value, name = partition[0:-1].split("(") # remove the parenthesis around the value and get the name
+        startsize = size                # partitions start at the end of the old partition
+        if(value[-1] == 'K'):
+            blocksize = 1024
+        elif(value[-1] == 'M'):
+            blocksize = 1024 * 1024
+        else:
+            print("blocksize unk")
+            return -1
+        size += int(value[0:-1]) * blocksize # remove the K and get the full size in bytes not kilobytes
+        print(f"{name} start {startsize} end {size} size {(size-startsize)//1024}")
+        PARTS.append((startsize, size, name))
+    
+    return PARTS
+
+
+# inputpath is intended to be the file that is going to get sliced and diced
+# keep in mind that the script does not care if the outdir already exists with files of the same name as what is abou to be created
+def extractpartitions(inputpath, outdir):
+    if not os.path.exists(outdir):
+        os.makedirs(outdir)
+
+    size = os.path.getsize(inputpath) # print file size for user
+    print(f"[i] Input file: {inputpath}")
+    print(f"[i] Size: {size} bytes")
+
+    i=0
+    with open(inputpath, "rb") as f:
+        for start, end, name in PARTITIONS:
+            length = end - start
+
+
+            if end > size:
+                print(f"[!] WARNING: partition '{name}' ends beyond file size")
+                continue
+
+            f.seek(start)
+            data = f.read(length)
+
+            if not os.path.exists(f"{outdir}/{i}_{name}"):
+                os.makedirs(f"{outdir}/{i}_{name}")
+
+            outfile = os.path.join(outdir, f"{i}_{name}/{name}.bin")
+            with open(outfile, "wb") as out:
+                out.write(data)
+            
+            print(f"[+] Extracted {name:<12} {hex(start)} - {hex(end)}, {length} bytes -> {outfile}")
+            i+=1
+
+        print("\n[done] All partitions extracted.\n")
+
+if __name__ == "__main__":
+
+    programname = sys.argv[0]
+    if len(sys.argv) < 3:
+        printusage(programname)
+
+    if len(sys.argv) > 3:
+         PARTITIONS = getpartitiontable(sys.argv[4-1])
+    
+    if PARTITIONS == -1:
+        print("Blocksize error, exit")
+        exit(-1)
+
+    extractpartitions(sys.argv[1], sys.argv[2])    
+
+
+
+
